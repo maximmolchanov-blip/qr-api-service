@@ -750,7 +750,10 @@ def generate_qr():
                     download_name='qrcode.png')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) Use HEX without #', 400
+    app.run(debug=True, host='0.0.0.0', port=5000)[i:i+2], 16) for i in (0, 2, 4))
+        back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
+    except:
+        return 'Error: invalid color format. Use HEX without #', 400
     
     qr = qrcode.QRCode(
         version=1,
@@ -804,7 +807,4 @@ def download_qr():
     quietzone = int(request.args.get('quietzone', 4))
     
     try:
-        fill_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-        back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
-    except:
-        return 'Error: invalid color format.
+        fill_color = tuple(int(color
