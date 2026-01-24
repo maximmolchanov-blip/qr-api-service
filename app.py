@@ -2,6 +2,8 @@ from flask import Flask, request, send_file, render_template_string, redirect, u
 import qrcode
 from io import BytesIO
 from PIL import Image
+import hashlib
+from functools import lru_cache
 
 app = Flask(__name__)
 
@@ -167,10 +169,10 @@ GET /qr?<span class="param">data</span>=<span class="string">https://example.com
             </div>
             <p style="color: #555; margin-top: 20px;"><strong>Параметры:</strong></p>
             <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
-                <li><code>data</code> - данные для кодирования (обязательный)</li>
+                <li><code>data</code> - данные для кодирования (обязательный, макс 1000 символов)</li>
                 <li><code>color</code> - цвет QR в HEX без # (по умолчанию: 000000)</li>
                 <li><code>bgcolor</code> - цвет фона в HEX без # (по умолчанию: ffffff)</li>
-                <li><code>size</code> - размер в пикселях (по умолчанию: 256)</li>
+                <li><code>size</code> - размер в пикселях (по умолчанию: 256, макс: 1024)</li>
                 <li><code>quietzone</code> - отступы вокруг QR (по умолчанию: 4)</li>
             </ul>
             <p style="color: #555; margin-top: 20px;"><strong>Эндпоинты:</strong></p>
@@ -523,6 +525,27 @@ QR_TYPES = {
     'phone': {'name': 'Телефон', 'icon': '📞', 'label': 'Номер телефона', 'placeholder': '+79991234567', 'helper': 'С кодом страны'}
 }
 
+# Кэширующая функция для генерации QR-кодов
+@lru_cache(maxsize=512)
+def create_qr_image(data, fill_color, back_color, size, quietzone):
+    """Генерирует QR-код с кэшированием"""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=quietzone
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color=fill_color, back_color=back_color)
+    img = img.resize((size, size), Image.Resampling.LANCZOS)
+    
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf.read()
+
 @app.route('/')
 def index():
     return render_template_string(HTML_MAIN)
@@ -542,24 +565,31 @@ def generate_qr():
     data = request.args.get('data', '')
     if not data:
         return 'Error: parameter "data" is required', 400
+    
+    # Защита от перегрузки
+    if len(data) > 1000:
+        return 'Error: data too long (max 1000 chars)', 400
+    
     color = request.args.get('color', '000000')
     bgcolor = request.args.get('bgcolor', 'ffffff')
     size = int(request.args.get('size', 256))
+    
+    # Ограничение размера
+    if size > 1024:
+        size = 1024
+    
     quietzone = int(request.args.get('quietzone', 4))
+    
     try:
         fill_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
         back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
     except:
         return 'Error: invalid color format. Use HEX without #', 400
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=quietzone)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color=fill_color, back_color=back_color)
-    img = img.resize((size, size), Image.Resampling.LANCZOS)
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
+    
+    # Используем кэшированную функцию
+    img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
+    
+    return send_file(BytesIO(img_bytes), mimetype='image/png')
 
 @app.route('/view')
 def view_qr():
@@ -580,27 +610,28 @@ def download_qr():
     data = request.args.get('data', '')
     if not data:
         return 'Error: parameter "data" is required', 400
+    
+    # Защита от перегрузки
+    if len(data) > 1000:
+        return 'Error: data too long (max 1000 chars)', 400
+    
     color = request.args.get('color', '000000')
     bgcolor = request.args.get('bgcolor', 'ffffff')
     size = int(request.args.get('size', 256))
+    
+    # Ограничение размера
+    if size > 1024:
+        size = 1024
+    
     quietzone = int(request.args.get('quietzone', 4))
+    
     try:
         fill_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
         back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
     except:
         return 'Error: invalid color format. Use HEX without #', 400
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=quietzone)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color=fill_color, back_color=back_color)
-    img = img.resize((size, size), Image.Resampling.LANCZOS)
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png', as_attachment=True, download_name='qrcode.png')
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
-
-
+    
+    # Используем кэшированную функцию
+    img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
+    
+    return send_file(BytesIO(img_bytes), mimetype='image/png', as_attachment=True, download_name='qrcode.png')
