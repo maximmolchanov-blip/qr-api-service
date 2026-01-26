@@ -307,10 +307,6 @@ HTML_MAIN = '''
 
         <div id="api-tab" class="tab-content">
             <div class="api-section">
-                <h2>🚀 Быстрый старт API</h2>
-                <div class="info-box">
-                    <strong>📌 Для клиентов:</strong> Этот API — аналог tec-it.com без квот и лимитов
-                </div>
                 <p style="color: #555; margin-bottom: 15px;">
                     Просто используйте GET-запрос:
                 </p>
@@ -359,11 +355,6 @@ fetch('/qr?data=Test&color=FF5733')
                     <li><strong>Макс. данные:</strong> 1000 символов</li>
                     <li><strong>Макс. размер:</strong> 2048x2048 пикселей</li>
                 </ul>
-
-                <h2 style="margin-top: 30px;">📊 Статистика</h2>
-                <p style="color: #555; margin: 10px 0;">
-                    Просмотреть статистику сервера: <a href="/stats" target="_blank" style="color: #667eea; font-weight: 600;">/stats</a>
-                </p>
             </div>
         </div>
     </div>
@@ -909,3 +900,4 @@ def health_check():
         'service': 'QR Code API',
         'version': '1.0.0'
     }), 200
+
