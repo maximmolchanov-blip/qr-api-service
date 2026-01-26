@@ -2,7 +2,7 @@
 
 ## 🌐 Главная страница
 
-**URL сервиса:** `https://your-domain.com`
+**URL сервиса:** `https://qr-api-service.onrender.com`
 
 На главной странице вы найдете:
 - 📊 **Статистику сервера** в реальном времени (общее количество запросов, кэш-попадания, заблокированные запросы)
@@ -20,7 +20,7 @@
 
 #### **Базовый формат:**
 ```
-GET https://your-domain.com/qr?data=ВАШИ_ДАННЫЕ
+GET https://qr-api-service.onrender.com/qr?data=ВАШИ_ДАННЫЕ
 ```
 
 #### **Обязательные параметры:**
@@ -43,27 +43,27 @@ GET https://your-domain.com/qr?data=ВАШИ_ДАННЫЕ
 
 **1. Базовый QR-код:**
 ```
-https://your-domain.com/qr?data=https://google.com
+https://qr-api-service.onrender.com/qr?data=https://google.com
 ```
 
 **2. Telegram профиль:**
 ```
-https://your-domain.com/qr?data=https://t.me/channel
+https://qr-api-service.onrender.com/qr?data=https://t.me/channel
 ```
 
 **3. WhatsApp чат:**
 ```
-https://your-domain.com/qr?data=https://wa.me/79991234567
+https://qr-api-service.onrender.com/qr?data=https://wa.me/79991234567
 ```
 
 **4. Email:**
 ```
-https://your-domain.com/qr?data=mailto:example@gmail.com
+https://qr-api-service.onrender.com/qr?data=mailto:example@gmail.com
 ```
 
 **5. Телефон:**
 ```
-https://your-domain.com/qr?data=tel:+79991234567
+https://qr-api-service.onrender.com/qr?data=tel:+79991234567
 ```
 
 ---
@@ -72,27 +72,27 @@ https://your-domain.com/qr?data=tel:+79991234567
 
 **Зеленый QR-код для Telegram:**
 ```
-https://your-domain.com/qr?data=https://t.me/channel&color=35b635&quietzone=6&size=Small
+https://qr-api-service.onrender.com/qr?data=https://t.me/channel&color=35b635&quietzone=6&size=Small
 ```
 
 **Красный QR-код среднего размера:**
 ```
-https://your-domain.com/qr?data=https://example.com&color=ff0000&bgcolor=ffffff&size=Medium
+https://qr-api-service.onrender.com/qr?data=https://example.com&color=ff0000&bgcolor=ffffff&size=Medium
 ```
 
 **Белый QR на черном фоне:**
 ```
-https://your-domain.com/qr?data=Hello%20World&color=ffffff&bgcolor=000000&size=Large
+https://qr-api-service.onrender.com/qr?data=Hello%20World&color=ffffff&bgcolor=000000&size=Large
 ```
 
 **QR точного размера 800px:**
 ```
-https://your-domain.com/qr?data=https://youtube.com/@channel&size=800
+https://qr-api-service.onrender.com/qr?data=https://youtube.com/@channel&size=800
 ```
 
 **Синий QR с минимальными отступами:**
 ```
-https://your-domain.com/qr?data=https://instagram.com/username&color=0088cc&quietzone=0&size=512
+https://qr-api-service.onrender.com/qr?data=https://instagram.com/username&color=0088cc&quietzone=0&size=512
 ```
 
 ---
@@ -102,7 +102,7 @@ https://your-domain.com/qr?data=https://instagram.com/username&color=0088cc&quie
 ### **HTML**
 ```html
 <!-- Вставка QR-кода на страницу -->
-<img src="https://your-domain.com/qr?data=https://example.com&size=Medium" 
+<img src="https://qr-api-service.onrender.com/qr?data=https://example.com&size=Medium" 
      alt="QR Code">
 ```
 
@@ -111,7 +111,7 @@ https://your-domain.com/qr?data=https://instagram.com/username&color=0088cc&quie
 import requests
 
 # Генерация и сохранение QR-кода
-url = "https://your-domain.com/qr"
+url = "https://qr-api-service.onrender.com/qr"
 params = {
     "data": "https://t.me/channel",
     "color": "35b635",
@@ -129,7 +129,7 @@ print("QR-код сохранен!")
 ### **JavaScript/Fetch API**
 ```javascript
 // Загрузка и отображение QR-кода
-fetch('https://your-domain.com/qr?data=MyData&color=FF5733&size=Medium')
+fetch('https://qr-api-service.onrender.com/qr?data=MyData&color=FF5733&size=Medium')
   .then(response => response.blob())
   .then(blob => {
     const img = document.createElement('img');
@@ -141,14 +141,14 @@ fetch('https://your-domain.com/qr?data=MyData&color=FF5733&size=Medium')
 ### **cURL (командная строка)**
 ```bash
 # Скачивание QR-кода через терминал
-curl "https://your-domain.com/qr?data=Test&size=Large&color=0000ff" -o qr.png
+curl "https://qr-api-service.onrender.com/qr?data=Test&size=Large&color=0000ff" -o qr.png
 ```
 
 ### **PHP**
 ```php
 <?php
 // Получение QR-кода
-$url = "https://your-domain.com/qr?data=https://example.com&size=512";
+$url = "https://qr-api-service.onrender.com/qr?data=https://example.com&size=512";
 $qrImage = file_get_contents($url);
 file_put_contents('qrcode.png', $qrImage);
 echo "QR-код создан!";
@@ -171,7 +171,7 @@ echo "QR-код создан!";
 
 **Пример с брендовым цветом:**
 ```
-https://your-domain.com/qr?data=https://t.me/mychannel&color=0088cc&size=Medium&quietzone=6
+https://qr-api-service.onrender.com/qr?data=https://t.me/mychannel&color=0088cc&size=Medium&quietzone=6
 ```
 
 ---
@@ -183,7 +183,7 @@ https://your-domain.com/qr?data=https://t.me/mychannel&color=0088cc&size=Medium&
 
 **Запрос:**
 ```
-GET https://your-domain.com/stats
+GET https://qr-api-service.onrender.com/stats
 ```
 
 **Ответ:**
@@ -209,7 +209,7 @@ GET https://your-domain.com/stats
 
 **Запрос:**
 ```
-GET https://your-domain.com/health
+GET https://qr-api-service.onrender.com/health
 ```
 
 **Ответ:**
@@ -297,39 +297,10 @@ HTTP 400
 https://qrcode.tec-it.com/API/QRCode?data=Test&color=35b635
 
 ✅ Новый URL:
-https://your-domain.com/qr?data=Test&color=35b635
+https://qr-api-service.onrender.com/qr?data=Test&color=35b635
 ```
 
 Просто замените домен — все параметры работают одинаково!
-
----
-
-## 🌟 Практические кейсы
-
-### **1. Визитная карточка (vCard)**
-```
-https://your-domain.com/qr?data=BEGIN:VCARD%0AVERSION:3.0%0AFN:John%20Doe%0ATEL:+1234567890%0AEMAIL:john@example.com%0AEND:VCARD&size=512
-```
-
-### **2. Wi-Fi подключение**
-```
-https://your-domain.com/qr?data=WIFI:T:WPA;S:MyNetwork;P:password123;;&size=Medium
-```
-
-### **3. SMS сообщение**
-```
-https://your-domain.com/qr?data=sms:+79991234567?body=Hello%20World&size=256
-```
-
-### **4. Геолокация**
-```
-https://your-domain.com/qr?data=geo:48.8584,2.2945?q=Eiffel%20Tower&size=Large
-```
-
-### **5. Календарное событие**
-```
-https://your-domain.com/qr?data=BEGIN:VEVENT%0ASUMMARY:Meeting%0ADTSTART:20260201T100000Z%0ADTEND:20260201T110000Z%0AEND:VEVENT&size=512
-```
 
 ---
 
@@ -355,17 +326,17 @@ https://your-domain.com/qr?data=BEGIN:VEVENT%0ASUMMARY:Meeting%0ADTSTART:2026020
 
 **Самый простой вариант:**
 ```
-https://your-domain.com/qr?data=YourText
+https://qr-api-service.onrender.com/qr?data=YourText
 ```
 
 **С настройками:**
 ```
-https://your-domain.com/qr?data=https://t.me/channel&color=0088cc&size=Medium&quietzone=6
+https://qr-api-service.onrender.com/qr?data=https://t.me/channel&color=0088cc&size=Medium&quietzone=6
 ```
 
 **Вставка в HTML:**
 ```html
-<img src="https://your-domain.com/qr?data=https://example.com" alt="QR">
+<img src="https://qr-api-service.onrender.com/qr?data=https://example.com" alt="QR">
 ```
 
 ---
