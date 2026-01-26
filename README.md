@@ -162,36 +162,6 @@ https://qr-api-service.onrender.com/download?data=https://youtube.com/@channelna
 https://qr-api-service.onrender.com/download?data=mailto:contact@company.com&color=e74c3c&size=512
 ```
 
----
-
-## 💡 Примеры использования
-
-* **vCard:**
-
-```
-https://qr-api-service.onrender.com/qr?data=BEGIN:VCARD%0AVERSION:3.0%0AFN:John%20Doe%0ATEL:+1234567890%0AEMAIL:john@example.com%0AEND:VCARD
-```
-
-* **Wi-Fi подключение:**
-
-```
-https://qr-api-service.onrender.com/qr?data=WIFI:T:WPA;S:NetworkName;P:password123;;
-```
-
-* **SMS:**
-
-```
-https://qr-api-service.onrender.com/qr?data=sms:+79991234567?body=Hello
-```
-
-* **Геолокация:**
-
-```
-https://qr-api-service.onrender.com/qr?data=https://maps.google.com/?q=48.8584,2.2945
-```
-
----
-
 ## 🎨 Популярные цвета для соцсетей
 
 | Сервис    | HEX цвет QR |
