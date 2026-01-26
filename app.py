@@ -2,54 +2,116 @@ from flask import Flask, request, send_file, render_template_string, redirect, u
 import qrcode
 from io import BytesIO
 from PIL import Image
-import hashlib
-from functools import lru_cache, wraps
+from functools import lru_cache
 from collections import defaultdict
 import time
 from threading import Lock
+import logging
 
 app = Flask(__name__)
 
-# Rate Limiting хранилище
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Статистика
+stats = {
+    'total_requests': 0,
+    'cache_hits': 0,
+    'rate_limited': 0,
+    'errors': 0
+}
+
+# Rate Limiting
 rate_limit_storage = defaultdict(list)
 rate_limit_lock = Lock()
 
-def rate_limit(max_requests=10, window=1):
+def get_client_ip():
+    """Получает реальный IP клиента (учитывая прокси/CDN)"""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP')
+    return request.remote_addr
+
+def check_rate_limit(max_requests=100, window=60):
     """
-    Декоратор для ограничения запросов
-    max_requests: максимум запросов
-    window: временное окно в секундах
+    Проверяет rate limit для клиента
+    По умолчанию: 100 запросов в минуту
     """
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            # Получаем IP клиента (с учетом прокси)
-            ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-            if ip:
-                ip = ip.split(',')[0].strip()
-            
-            current_time = time.time()
-            
-            with rate_limit_lock:
-                # Очищаем старые записи
-                rate_limit_storage[ip] = [
-                    req_time for req_time in rate_limit_storage[ip]
-                    if current_time - req_time < window
-                ]
-                
-                # Проверяем лимит
-                if len(rate_limit_storage[ip]) >= max_requests:
-                    return jsonify({
-                        'error': 'Rate limit exceeded',
-                        'message': f'Максимум {max_requests} запросов в {window} сек. Попробуйте позже.'
-                    }), 429
-                
-                # Добавляем текущий запрос
-                rate_limit_storage[ip].append(current_time)
-            
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
+    ip = get_client_ip()
+    current_time = time.time()
+    
+    with rate_limit_lock:
+        # Очистка старых записей
+        rate_limit_storage[ip] = [
+            req_time for req_time in rate_limit_storage[ip]
+            if current_time - req_time < window
+        ]
+        
+        # Проверка лимита
+        if len(rate_limit_storage[ip]) >= max_requests:
+            stats['rate_limited'] += 1
+            logger.warning(f"Rate limit exceeded for IP: {ip}")
+            return False
+        
+        # Добавление текущего запроса
+        rate_limit_storage[ip].append(current_time)
+    
+    return True
+
+@lru_cache(maxsize=512)
+def create_qr_image(data, fill_color, back_color, size, quietzone):
+    """
+    Генерирует QR-код с кэшированием
+    Параметры идентичны tec-it API
+    """
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=quietzone
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color=fill_color, back_color=back_color)
+    img = img.resize((size, size), Image.Resampling.LANCZOS)
+    
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf.read()
+
+def parse_color(color_str):
+    """Парсит цвет из HEX (с # или без)"""
+    color_str = color_str.lstrip('#')
+    if len(color_str) == 6:
+        return tuple(int(color_str[i:i+2], 16) for i in (0, 2, 4))
+    return (0, 0, 0)  # Черный по умолчанию
+
+def parse_size(size_param):
+    """Парсит размер (поддерживает Small/Medium/Large или числа)"""
+    size_map = {
+        'small': 256,
+        'medium': 512,
+        'large': 1024
+    }
+    
+    if isinstance(size_param, str):
+        size_lower = size_param.lower()
+        if size_lower in size_map:
+            return size_map[size_lower]
+        try:
+            size = int(size_param)
+            return min(max(size, 64), 2048)  # От 64 до 2048
+        except:
+            return 256
+    
+    return min(max(int(size_param), 64), 2048)
 
 HTML_MAIN = '''
 <!DOCTYPE html>
@@ -57,7 +119,7 @@ HTML_MAIN = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code API Service</title>
+    <title>QR Code Generator & API</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -142,15 +204,39 @@ HTML_MAIN = '''
         }
         .param { color: #f92672; }
         .string { color: #a6e22e; }
-        .warning-box {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
+        .info-box {
+            background: #d1ecf1;
+            border-left: 4px solid #0c5460;
             padding: 15px;
             margin: 20px 0;
-            border-radius: 8px;
+            border-radius: 4px;
+            color: #0c5460;
         }
-        .warning-box strong { color: #856404; }
-        .warning-box p { color: #856404; margin: 5px 0; font-size: 14px; }
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
         @media (max-width: 768px) {
             .container { padding: 20px; }
             h1 { font-size: 24px; }
@@ -163,84 +249,141 @@ HTML_MAIN = '''
 <body>
     <div class="container">
         <h1>🔲 QR Code Generator</h1>
-        <p class="subtitle">Выберите тип QR-кода</p>
+        <p class="subtitle">Создавайте QR-коды через веб-интерфейс или API</p>
         
-        <div class="type-grid">
-            <a href="/generate?type=url" class="type-card">
-                <div class="type-icon">🔗</div>
-                <div class="type-name">URL / Текст</div>
-            </a>
-            <a href="/generate?type=telegram" class="type-card">
-                <div class="type-icon">✈️</div>
-                <div class="type-name">Telegram</div>
-            </a>
-            <a href="/generate?type=whatsapp" class="type-card">
-                <div class="type-icon">💬</div>
-                <div class="type-name">WhatsApp</div>
-            </a>
-            <a href="/generate?type=instagram" class="type-card">
-                <div class="type-icon">📷</div>
-                <div class="type-name">Instagram</div>
-            </a>
-            <a href="/generate?type=facebook" class="type-card">
-                <div class="type-icon">👥</div>
-                <div class="type-name">Facebook</div>
-            </a>
-            <a href="/generate?type=tiktok" class="type-card">
-                <div class="type-icon">🎵</div>
-                <div class="type-name">TikTok</div>
-            </a>
-            <a href="/generate?type=twitter" class="type-card">
-                <div class="type-icon">🐦</div>
-                <div class="type-name">Twitter (X)</div>
-            </a>
-            <a href="/generate?type=linkedin" class="type-card">
-                <div class="type-icon">💼</div>
-                <div class="type-name">LinkedIn</div>
-            </a>
-            <a href="/generate?type=youtube" class="type-card">
-                <div class="type-icon">📺</div>
-                <div class="type-name">YouTube</div>
-            </a>
-            <a href="/generate?type=email" class="type-card">
-                <div class="type-icon">📧</div>
-                <div class="type-name">Email</div>
-            </a>
-            <a href="/generate?type=phone" class="type-card">
-                <div class="type-icon">📞</div>
-                <div class="type-name">Телефон</div>
-            </a>
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('web')">🎨 Веб-интерфейс</button>
+            <button class="tab-btn" onclick="switchTab('api')">🔌 API Документация</button>
         </div>
 
-        <div class="api-section">
-            <h2>📖 API Документация</h2>
-            <div class="warning-box">
-                <strong>🛡️ Защита от спама:</strong>
-                <p>• Максимум 10 запросов в секунду с одного IP</p>
-                <p>• При превышении лимита — HTTP 429 (подождите 1 сек)</p>
+        <div id="web-tab" class="tab-content active">
+            <div class="type-grid">
+                <a href="/generate?type=url" class="type-card">
+                    <div class="type-icon">🔗</div>
+                    <div class="type-name">URL / Текст</div>
+                </a>
+                <a href="/generate?type=telegram" class="type-card">
+                    <div class="type-icon">✈️</div>
+                    <div class="type-name">Telegram</div>
+                </a>
+                <a href="/generate?type=whatsapp" class="type-card">
+                    <div class="type-icon">💬</div>
+                    <div class="type-name">WhatsApp</div>
+                </a>
+                <a href="/generate?type=instagram" class="type-card">
+                    <div class="type-icon">📷</div>
+                    <div class="type-name">Instagram</div>
+                </a>
+                <a href="/generate?type=facebook" class="type-card">
+                    <div class="type-icon">👥</div>
+                    <div class="type-name">Facebook</div>
+                </a>
+                <a href="/generate?type=tiktok" class="type-card">
+                    <div class="type-icon">🎵</div>
+                    <div class="type-name">TikTok</div>
+                </a>
+                <a href="/generate?type=twitter" class="type-card">
+                    <div class="type-icon">🐦</div>
+                    <div class="type-name">Twitter (X)</div>
+                </a>
+                <a href="/generate?type=linkedin" class="type-card">
+                    <div class="type-icon">💼</div>
+                    <div class="type-name">LinkedIn</div>
+                </a>
+                <a href="/generate?type=youtube" class="type-card">
+                    <div class="type-icon">📺</div>
+                    <div class="type-name">YouTube</div>
+                </a>
+                <a href="/generate?type=email" class="type-card">
+                    <div class="type-icon">📧</div>
+                    <div class="type-name">Email</div>
+                </a>
+                <a href="/generate?type=phone" class="type-card">
+                    <div class="type-icon">📞</div>
+                    <div class="type-name">Телефон</div>
+                </a>
             </div>
-            <p style="color: #555; margin-bottom: 15px;">
-                Используйте GET-запрос для генерации QR-кодов:
-            </p>
-            <div class="code-block">
-GET /qr?<span class="param">data</span>=<span class="string">https://example.com</span>&<span class="param">color</span>=<span class="string">000000</span>&<span class="param">bgcolor</span>=<span class="string">ffffff</span>&<span class="param">size</span>=<span class="string">256</span>
+        </div>
+
+        <div id="api-tab" class="tab-content">
+            <div class="api-section">
+                <h2>🚀 Быстрый старт API</h2>
+                <div class="info-box">
+                    <strong>📌 Для клиентов:</strong> Этот API — аналог tec-it.com без квот и лимитов
+                </div>
+                <p style="color: #555; margin-bottom: 15px;">
+                    Просто используйте GET-запрос:
+                </p>
+                <div class="code-block">
+GET /qr?<span class="param">data</span>=<span class="string">YourData</span>&<span class="param">color</span>=<span class="string">35b635</span>&<span class="param">size</span>=<span class="string">Small</span>
+                </div>
+                
+                <h2 style="margin-top: 30px;">📖 Параметры</h2>
+                <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
+                    <li><code>data</code> - данные для QR (обязательно, макс 1000 символов)</li>
+                    <li><code>color</code> - цвет QR в HEX без # (по умолчанию: 000000)</li>
+                    <li><code>bgcolor</code> - цвет фона в HEX (по умолчанию: ffffff)</li>
+                    <li><code>size</code> - Small/Medium/Large или число 64-2048 (по умолчанию: 256)</li>
+                    <li><code>quietzone</code> - отступы 0-10 (по умолчанию: 4)</li>
+                </ul>
+
+                <h2 style="margin-top: 30px;">💻 Примеры</h2>
+                
+                <p style="margin: 15px 0;"><strong>HTML:</strong></p>
+                <div class="code-block">
+&lt;img src="/qr?data=https://example.com&size=Medium"&gt;
+                </div>
+
+                <p style="margin: 15px 0;"><strong>Python:</strong></p>
+                <div class="code-block">
+import requests
+r = requests.get('https://your-site.com/qr?data=Test')
+with open('qr.png', 'wb') as f:
+    f.write(r.content)
+                </div>
+
+                <p style="margin: 15px 0;"><strong>JavaScript:</strong></p>
+                <div class="code-block">
+fetch('/qr?data=Test&color=FF5733')
+  .then(r => r.blob())
+  .then(blob => {
+    const img = new Image();
+    img.src = URL.createObjectURL(blob);
+    document.body.appendChild(img);
+  });
+                </div>
+
+                <h2 style="margin-top: 30px;">🛡️ Ограничения</h2>
+                <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
+                    <li><strong>Rate Limit:</strong> 100 запросов в минуту с одного IP</li>
+                    <li><strong>Макс. данные:</strong> 1000 символов</li>
+                    <li><strong>Макс. размер:</strong> 2048x2048 пикселей</li>
+                </ul>
+
+                <h2 style="margin-top: 30px;">📊 Статистика</h2>
+                <p style="color: #555; margin: 10px 0;">
+                    Просмотреть статистику сервера: <a href="/stats" target="_blank" style="color: #667eea; font-weight: 600;">/stats</a>
+                </p>
             </div>
-            <p style="color: #555; margin-top: 20px;"><strong>Параметры:</strong></p>
-            <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
-                <li><code>data</code> - данные для кодирования (обязательный, макс 1000 символов)</li>
-                <li><code>color</code> - цвет QR в HEX без # (по умолчанию: 000000)</li>
-                <li><code>bgcolor</code> - цвет фона в HEX без # (по умолчанию: ffffff)</li>
-                <li><code>size</code> - размер в пикселях (по умолчанию: 256, макс: 1024)</li>
-                <li><code>quietzone</code> - отступы вокруг QR (по умолчанию: 4)</li>
-            </ul>
-            <p style="color: #555; margin-top: 20px;"><strong>Эндпоинты:</strong></p>
-            <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
-                <li><code>/qr</code> - получить PNG изображение (Rate limit: 10/sec)</li>
-                <li><code>/view</code> - посмотреть QR на странице</li>
-                <li><code>/download</code> - скачать QR-код (Rate limit: 10/sec)</li>
-            </ul>
         </div>
     </div>
+
+    <script>
+        function switchTab(tab) {
+            // Убрать активные классы
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Добавить активные классы
+            if (tab === 'web') {
+                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+                document.getElementById('web-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+                document.getElementById('api-tab').classList.add('active');
+            }
+        }
+    </script>
 </body>
 </html>
 '''
@@ -487,7 +630,6 @@ HTML_GENERATE = '''
             const viewUrl = "/view?" + params;
             const downloadUrl = "/download?" + params;
             
-            // Проверка на rate limit
             fetch(qrUrl)
                 .then(response => {
                     if (response.status === 429) {
@@ -616,27 +758,6 @@ QR_TYPES = {
     'phone': {'name': 'Телефон', 'icon': '📞', 'label': 'Номер телефона', 'placeholder': '+79991234567', 'helper': 'С кодом страны'}
 }
 
-# Кэширующая функция для генерации QR-кодов
-@lru_cache(maxsize=512)
-def create_qr_image(data, fill_color, back_color, size, quietzone):
-    """Генерирует QR-код с кэшированием"""
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=10,
-        border=quietzone
-    )
-    qr.add_data(data)
-    qr.make(fit=True)
-    
-    img = qr.make_image(fill_color=fill_color, back_color=back_color)
-    img = img.resize((size, size), Image.Resampling.LANCZOS)
-    
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return buf.read()
-
 @app.route('/')
 def index():
     return render_template_string(HTML_MAIN)
@@ -650,38 +771,6 @@ def generate_page():
     return render_template_string(HTML_GENERATE, type=qr_type, type_name=config['name'], 
                                  type_icon=config['icon'], input_label=config['label'],
                                  placeholder=config['placeholder'], helper_text=config['helper'])
-
-@app.route('/qr')
-@rate_limit(max_requests=10, window=1)  # 10 запросов в секунду
-def generate_qr():
-    data = request.args.get('data', '')
-    if not data:
-        return 'Error: parameter "data" is required', 400
-    
-    # Защита от перегрузки
-    if len(data) > 1000:
-        return 'Error: data too long (max 1000 chars)', 400
-    
-    color = request.args.get('color', '000000')
-    bgcolor = request.args.get('bgcolor', 'ffffff')
-    size = int(request.args.get('size', 256))
-    
-    # Ограничение размера
-    if size > 1024:
-        size = 1024
-    
-    quietzone = int(request.args.get('quietzone', 4))
-    
-    try:
-        fill_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-        back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
-    except:
-        return 'Error: invalid color format. Use HEX without #', 400
-    
-    # Используем кэшированную функцию
-    img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
-    
-    return send_file(BytesIO(img_bytes), mimetype='image/png')
 
 @app.route('/view')
 def view_qr():
@@ -697,34 +786,126 @@ def view_qr():
     return render_template_string(VIEW_TEMPLATE, qr_url=qr_url, download_url=download_url, 
                                  data=data, color=color, bgcolor=bgcolor, size=size)
 
-@app.route('/download')
-@rate_limit(max_requests=10, window=1)  # 10 запросов в секунду
-def download_qr():
+@app.route('/qr')
+def generate_qr():
+    """Главный API эндпоинт для генерации QR"""
+    stats['total_requests'] += 1
+    
+    # Rate limiting
+    if not check_rate_limit(max_requests=100, window=60):
+        return jsonify({
+            'error': 'Rate limit exceeded',
+            'message': 'Максимум 100 запросов в минуту. Попробуйте через 60 секунд.'
+        }), 429
+    
     data = request.args.get('data', '')
     if not data:
-        return 'Error: parameter "data" is required', 400
+        stats['errors'] += 1
+        return jsonify({'error': 'Параметр "data" обязателен'}), 400
     
-    # Защита от перегрузки
     if len(data) > 1000:
-        return 'Error: data too long (max 1000 chars)', 400
+        stats['errors'] += 1
+        return jsonify({'error': 'Данные слишком длинные (макс 1000 символов)'}), 400
     
     color = request.args.get('color', '000000')
     bgcolor = request.args.get('bgcolor', 'ffffff')
-    size = int(request.args.get('size', 256))
-    
-    # Ограничение размера
-    if size > 1024:
-        size = 1024
-    
+    size = parse_size(request.args.get('size', '256'))
     quietzone = int(request.args.get('quietzone', 4))
+    quietzone = min(max(quietzone, 0), 10)
     
     try:
-        fill_color = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-        back_color = tuple(int(bgcolor[i:i+2], 16) for i in (0, 2, 4))
-    except:
-        return 'Error: invalid color format. Use HEX without #', 400
+        fill_color = parse_color(color)
+        back_color = parse_color(bgcolor)
+    except Exception as e:
+        stats['errors'] += 1
+        logger.error(f"Color parsing error: {e}")
+        return jsonify({'error': 'Неверный формат цвета'}), 400
     
-    # Используем кэшированную функцию
-    img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
+    try:
+        cache_info = create_qr_image.cache_info()
+        initial_hits = cache_info.hits
+        
+        img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
+        
+        cache_info = create_qr_image.cache_info()
+        if cache_info.hits > initial_hits:
+            stats['cache_hits'] += 1
+        
+        ip = get_client_ip()
+        logger.info(f"QR generated - IP: {ip}, Size: {size}, Data: {len(data)} chars")
+        
+        return send_file(BytesIO(img_bytes), mimetype='image/png')
+        
+    except Exception as e:
+        stats['errors'] += 1
+        logger.error(f"QR generation error: {e}")
+        return jsonify({'error': 'Ошибка генерации QR-кода'}), 500
+
+@app.route('/download')
+def download_qr():
+    """Эндпоинт для скачивания QR"""
+    stats['total_requests'] += 1
     
-    return send_file(BytesIO(img_bytes), mimetype='image/png', as_attachment=True, download_name='qrcode.png')
+    if not check_rate_limit(max_requests=100, window=60):
+        return jsonify({
+            'error': 'Rate limit exceeded',
+            'message': 'Максимум 100 запросов в минуту'
+        }), 429
+    
+    data = request.args.get('data', '')
+    if not data:
+        return jsonify({'error': 'Параметр "data" обязателен'}), 400
+    
+    if len(data) > 1000:
+        return jsonify({'error': 'Данные слишком длинные'}), 400
+    
+    color = request.args.get('color', '000000')
+    bgcolor = request.args.get('bgcolor', 'ffffff')
+    size = parse_size(request.args.get('size', '256'))
+    quietzone = int(request.args.get('quietzone', 4))
+    quietzone = min(max(quietzone, 0), 10)
+    
+    try:
+        fill_color = parse_color(color)
+        back_color = parse_color(bgcolor)
+        img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
+        
+        return send_file(
+            BytesIO(img_bytes),
+            mimetype='image/png',
+            as_attachment=True,
+            download_name='qrcode.png'
+        )
+    except Exception as e:
+        stats['errors'] += 1
+        logger.error(f"Download error: {e}")
+        return jsonify({'error': 'Ошибка скачивания'}), 500
+
+@app.route('/stats')
+def show_stats():
+    """Эндпоинт статистики"""
+    cache_info = create_qr_image.cache_info()
+    
+    return jsonify({
+        'total_requests': stats['total_requests'],
+        'cache_hits': stats['cache_hits'],
+        'rate_limited': stats['rate_limited'],
+        'errors': stats['errors'],
+        'active_ips': len(rate_limit_storage),
+        'cache': {
+            'size': cache_info.currsize,
+            'max_size': cache_info.maxsize,
+            'hits': cache_info.hits,
+            'misses': cache_info.misses,
+            'hit_rate': round(cache_info.hits / (cache_info.hits + cache_info.misses) * 100, 2) if (cache_info.hits + cache_info.misses) > 0 else 0
+        }
+    })
+
+@app.route('/health')
+def health_check():
+    """Health check для мониторинга"""
+    return jsonify({
+        'status': 'ok',
+        'service': 'QR Code API',
+        'version': '1.0.0'
+    }), 200
