@@ -7,8 +7,14 @@ from collections import defaultdict
 import time
 from threading import Lock
 import logging
+import os
+from keep_alive import KeepAlive
 
 app = Flask(__name__)
+
+# Keep-alive для Render.com (предотвращает засыпание)
+APP_URL = os.getenv('APP_URL')  # Установите переменную окружения на Render
+keep_alive = KeepAlive(app_url=APP_URL, interval=840)  # Ping каждые 14 минут
 
 # Настройка логирования
 logging.basicConfig(
@@ -889,6 +895,11 @@ def show_stats():
             'hits': cache_info.hits,
             'misses': cache_info.misses,
             'hit_rate': round(cache_info.hits / (cache_info.hits + cache_info.misses) * 100, 2) if (cache_info.hits + cache_info.misses) > 0 else 0
+        },
+        'keep_alive': {
+            'enabled': keep_alive.app_url is not None,
+            'url': keep_alive.app_url,
+            'interval': keep_alive.interval
         }
     })
 
@@ -901,3 +912,6 @@ def health_check():
         'version': '1.0.0'
     }), 200
 
+# Запускаем keep-alive при старте приложения (работает и с Gunicorn)
+keep_alive.start()
+logger.info("Keep-alive система активирована")
