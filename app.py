@@ -12,11 +12,11 @@ from keep_alive import KeepAlive
 
 app = Flask(__name__)
 
-# Keep-alive для Render.com (предотвращает засыпание)
-APP_URL = os.getenv('APP_URL')  # Установите переменную окружения на Render
-keep_alive = KeepAlive(app_url=APP_URL, interval=840)  # Ping каждые 14 минут
+# Keep-alive для Render.com (запобігає засинанню)
+APP_URL = os.getenv('APP_URL')  # Встановіть змінну середовища на Render
+keep_alive = KeepAlive(app_url=APP_URL, interval=840)  # Ping кожні 14 хвилин
 
-# Настройка логирования
+# Налаштування логування
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -31,12 +31,12 @@ stats = {
     'errors': 0
 }
 
-# Rate Limiting
+# Обмеження запитів
 rate_limit_storage = defaultdict(list)
 rate_limit_lock = Lock()
 
 def get_client_ip():
-    """Получает реальный IP клиента (учитывая прокси/CDN)"""
+    """Отримує реальний IP клієнта (з урахуванням проксі/CDN)"""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     elif request.headers.get('X-Real-IP'):
@@ -45,35 +45,34 @@ def get_client_ip():
 
 def check_rate_limit(max_requests=100, window=60):
     """
-    Проверяет rate limit для клиента
-    По умолчанию: 100 запросов в минуту
+    Перевіряє ліміт запитів для клієнта
+    За замовчуванням: 100 запитів на хвилину
     """
     ip = get_client_ip()
     current_time = time.time()
-    
+
     with rate_limit_lock:
-        # Очистка старых записей
+        # Очищення старих записів
         rate_limit_storage[ip] = [
             req_time for req_time in rate_limit_storage[ip]
             if current_time - req_time < window
         ]
-        
-        # Проверка лимита
+
+        # Перевірка ліміту
         if len(rate_limit_storage[ip]) >= max_requests:
             stats['rate_limited'] += 1
-            logger.warning(f"Rate limit exceeded for IP: {ip}")
+            logger.warning(f"Перевищено ліміт запитів для IP: {ip}")
             return False
-        
-        # Добавление текущего запроса
+
+        # Додавання поточного запиту
         rate_limit_storage[ip].append(current_time)
-    
+
     return True
 
 @lru_cache(maxsize=512)
 def create_qr_image(data, fill_color, back_color, size, quietzone):
     """
-    Генерирует QR-код с кэшированием
-    Параметры идентичны tec-it API
+    Генерує QR-код із кешуванням
     """
     qr = qrcode.QRCode(
         version=1,
@@ -83,49 +82,49 @@ def create_qr_image(data, fill_color, back_color, size, quietzone):
     )
     qr.add_data(data)
     qr.make(fit=True)
-    
+
     img = qr.make_image(fill_color=fill_color, back_color=back_color)
     img = img.resize((size, size), Image.Resampling.LANCZOS)
-    
+
     buf = BytesIO()
     img.save(buf, format='PNG')
     buf.seek(0)
     return buf.read()
 
 def parse_color(color_str):
-    """Парсит цвет из HEX (с # или без)"""
+    """Розбирає колір з HEX (з # або без)"""
     color_str = color_str.lstrip('#')
     if len(color_str) == 6:
         return tuple(int(color_str[i:i+2], 16) for i in (0, 2, 4))
-    return (0, 0, 0)  # Черный по умолчанию
+    return (0, 0, 0)  # Чорний за замовчуванням
 
 def parse_size(size_param):
-    """Парсит размер (поддерживает Small/Medium/Large или числа)"""
+    """Розбирає розмір (підтримує Small/Medium/Large або числа)"""
     size_map = {
         'small': 256,
         'medium': 512,
         'large': 1024
     }
-    
+
     if isinstance(size_param, str):
         size_lower = size_param.lower()
         if size_lower in size_map:
             return size_map[size_lower]
         try:
             size = int(size_param)
-            return min(max(size, 64), 2048)  # От 64 до 2048
+            return min(max(size, 64), 2048)  # Від 64 до 2048
         except:
             return 256
-    
+
     return min(max(int(size_param), 64), 2048)
 
 HTML_MAIN = '''
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Generator & API</title>
+    <title>Генератор QR-кодів та API</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -210,14 +209,6 @@ HTML_MAIN = '''
         }
         .param { color: #f92672; }
         .string { color: #a6e22e; }
-        .info-box {
-            background: #d1ecf1;
-            border-left: 4px solid #0c5460;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 4px;
-            color: #0c5460;
-        }
         .tab-buttons {
             display: flex;
             gap: 10px;
@@ -254,12 +245,12 @@ HTML_MAIN = '''
 </head>
 <body>
     <div class="container">
-        <h1>🔲 QR Code Generator</h1>
-        <p class="subtitle">Создавайте QR-коды через веб-интерфейс или API</p>
-        
+        <h1>🔲 Генератор QR-кодів</h1>
+        <p class="subtitle">Створюйте QR-коди через вебінтерфейс або API</p>
+
         <div class="tab-buttons">
-            <button class="tab-btn active" onclick="switchTab('web')">🎨 Веб-интерфейс</button>
-            <button class="tab-btn" onclick="switchTab('api')">🔌 API Документация</button>
+            <button class="tab-btn active" onclick="switchTab('web')">🎨 Вебінтерфейс</button>
+            <button class="tab-btn" onclick="switchTab('api')">🔌 Документація API</button>
         </div>
 
         <div id="web-tab" class="tab-content active">
@@ -314,23 +305,23 @@ HTML_MAIN = '''
         <div id="api-tab" class="tab-content">
             <div class="api-section">
                 <p style="color: #555; margin-bottom: 15px;">
-                    Просто используйте GET-запрос:
+                    Просто використовуйте GET-запит:
                 </p>
                 <div class="code-block">
-GET /qr?<span class="param">data</span>=<span class="string">YourData</span>&<span class="param">color</span>=<span class="string">35b635</span>&<span class="param">size</span>=<span class="string">Small</span>
+GET /qr?<span class="param">data</span>=<span class="string">ВашіДані</span>&<span class="param">color</span>=<span class="string">35b635</span>&<span class="param">size</span>=<span class="string">Small</span>
                 </div>
-                
-                <h2 style="margin-top: 30px;">📖 Параметры</h2>
+
+                <h2 style="margin-top: 30px;">📖 Параметри</h2>
                 <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
-                    <li><code>data</code> - данные для QR (обязательно, макс 1000 символов)</li>
-                    <li><code>color</code> - цвет QR в HEX без # (по умолчанию: 000000)</li>
-                    <li><code>bgcolor</code> - цвет фона в HEX (по умолчанию: ffffff)</li>
-                    <li><code>size</code> - Small/Medium/Large или число 64-2048 (по умолчанию: 256)</li>
-                    <li><code>quietzone</code> - отступы 0-10 (по умолчанию: 4)</li>
+                    <li><code>data</code> — дані для QR (обов'язково, макс. 1000 символів)</li>
+                    <li><code>color</code> — колір QR у HEX без # (за замовчуванням: 000000)</li>
+                    <li><code>bgcolor</code> — колір фону у HEX (за замовчуванням: ffffff)</li>
+                    <li><code>size</code> — Small/Medium/Large або число 64–2048 (за замовчуванням: 256)</li>
+                    <li><code>quietzone</code> — відступи 0–10 (за замовчуванням: 4)</li>
                 </ul>
 
-                <h2 style="margin-top: 30px;">💻 Примеры</h2>
-                
+                <h2 style="margin-top: 30px;">💻 Приклади</h2>
+
                 <p style="margin: 15px 0;"><strong>HTML:</strong></p>
                 <div class="code-block">
 &lt;img src="/qr?data=https://example.com&size=Medium"&gt;
@@ -339,14 +330,14 @@ GET /qr?<span class="param">data</span>=<span class="string">YourData</span>&<sp
                 <p style="margin: 15px 0;"><strong>Python:</strong></p>
                 <div class="code-block">
 import requests
-r = requests.get('https://your-site.com/qr?data=Test')
+r = requests.get('https://your-site.com/qr?data=Тест')
 with open('qr.png', 'wb') as f:
     f.write(r.content)
                 </div>
 
                 <p style="margin: 15px 0;"><strong>JavaScript:</strong></p>
                 <div class="code-block">
-fetch('/qr?data=Test&color=FF5733')
+fetch('/qr?data=Тест&color=FF5733')
   .then(r => r.blob())
   .then(blob => {
     const img = new Image();
@@ -355,11 +346,11 @@ fetch('/qr?data=Test&color=FF5733')
   });
                 </div>
 
-                <h2 style="margin-top: 30px;">🛡️ Ограничения</h2>
+                <h2 style="margin-top: 30px;">🛡️ Обмеження</h2>
                 <ul style="margin-left: 20px; margin-top: 10px; color: #555; line-height: 1.8;">
-                    <li><strong>Rate Limit:</strong> 100 запросов в минуту с одного IP</li>
-                    <li><strong>Макс. данные:</strong> 1000 символов</li>
-                    <li><strong>Макс. размер:</strong> 2048x2048 пикселей</li>
+                    <li><strong>Ліміт запитів:</strong> 100 запитів на хвилину з одного IP</li>
+                    <li><strong>Макс. дані:</strong> 1000 символів</li>
+                    <li><strong>Макс. розмір:</strong> 2048×2048 пікселів</li>
                 </ul>
             </div>
         </div>
@@ -367,11 +358,9 @@ fetch('/qr?data=Test&color=FF5733')
 
     <script>
         function switchTab(tab) {
-            // Убрать активные классы
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            // Добавить активные классы
+
             if (tab === 'web') {
                 document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
                 document.getElementById('web-tab').classList.add('active');
@@ -387,11 +376,11 @@ fetch('/qr?data=Test&color=FF5733')
 
 HTML_GENERATE = '''
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Создать QR - {{ type_name }}</title>
+    <title>Створити QR — {{ type_name }}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -538,7 +527,7 @@ HTML_GENERATE = '''
 <body>
     <div class="container">
         <h1>{{ type_icon }} {{ type_name }}</h1>
-        <p class="subtitle">Заполните данные для QR-кода</p>
+        <p class="subtitle">Заповніть дані для QR-коду</p>
         <div class="form-section">
             <div class="form-group">
                 <label>{{ input_label }}</label>
@@ -551,41 +540,41 @@ HTML_GENERATE = '''
             </div>
             <div class="color-group">
                 <div class="form-group">
-                    <label>Цвет QR</label>
+                    <label>Колір QR</label>
                     <input type="color" id="qrColor" value="#000000">
                 </div>
                 <div class="form-group">
-                    <label>Цвет фона</label>
+                    <label>Колір фону</label>
                     <input type="color" id="bgColor" value="#ffffff">
                 </div>
             </div>
             <div class="color-group">
                 <div class="form-group">
-                    <label>Размер</label>
+                    <label>Розмір</label>
                     <select id="qrSize">
-                        <option value="256" selected>256x256</option>
-                        <option value="512">512x512</option>
-                        <option value="1024">1024x1024</option>
+                        <option value="256" selected>256×256</option>
+                        <option value="512">512×512</option>
+                        <option value="1024">1024×1024</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Отступы</label>
+                    <label>Відступи</label>
                     <select id="quietZone">
-                        <option value="4" selected>Средние</option>
-                        <option value="2">Маленькие</option>
-                        <option value="6">Большие</option>
+                        <option value="4" selected>Середні</option>
+                        <option value="2">Малі</option>
+                        <option value="6">Великі</option>
                     </select>
                 </div>
             </div>
-            <button class="btn" onclick="generateQR()">Создать QR-код</button>
+            <button class="btn" onclick="generateQR()">Створити QR-код</button>
             <a href="/" class="btn btn-secondary" style="display: block; text-align: center; text-decoration: none;">← Назад</a>
             <div class="error-message" id="errorMessage"></div>
             <div class="preview" id="preview">
-                <p style="color: #999;">QR-код появится здесь</p>
+                <p style="color: #999;">QR-код з'явиться тут</p>
             </div>
             <div id="buttonGroup" style="display: none;" class="btn-group">
-                <a class="btn-action" id="viewBtn" href="#" target="_blank">👁️ Посмотреть</a>
-                <a class="btn-action" id="downloadBtn" href="#" download="qrcode.png">⬇️ Скачать</a>
+                <a class="btn-action" id="viewBtn" href="#" target="_blank">👁️ Переглянути</a>
+                <a class="btn-action" id="downloadBtn" href="#" download="qrcode.png">⬇️ Завантажити</a>
             </div>
         </div>
     </div>
@@ -617,7 +606,7 @@ HTML_GENERATE = '''
         }
         function generateQR() {
             const data = buildData();
-            if (!data) { alert('Пожалуйста, заполните поле'); return; }
+            if (!data) { alert('Будь ласка, заповніть поле'); return; }
             const color = document.getElementById('qrColor').value.replace('#', '');
             const bgcolor = document.getElementById('bgColor').value.replace('#', '');
             const size = document.getElementById('qrSize').value;
@@ -626,7 +615,7 @@ HTML_GENERATE = '''
             const qrUrl = "/qr?" + params;
             const viewUrl = "/view?" + params;
             const downloadUrl = "/download?" + params;
-            
+
             fetch(qrUrl)
                 .then(response => {
                     if (response.status === 429) {
@@ -634,7 +623,7 @@ HTML_GENERATE = '''
                             throw new Error(data.message);
                         });
                     }
-                    if (!response.ok) throw new Error('Ошибка генерации QR-кода');
+                    if (!response.ok) throw new Error('Помилка генерації QR-коду');
                     return response.blob();
                 })
                 .then(blob => {
@@ -658,11 +647,11 @@ HTML_GENERATE = '''
 
 VIEW_TEMPLATE = '''
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Просмотр QR-кода</title>
+    <title>Перегляд QR-коду</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -729,30 +718,30 @@ VIEW_TEMPLATE = '''
             <img src="{{ qr_url }}" alt="QR Code">
         </div>
         <div class="info">
-            <p><strong>Данные:</strong> {{ data }}</p>
-            <p><strong>Размер:</strong> {{ size }}x{{ size }} пикселей</p>
-            <p><strong>Цвет:</strong> #{{ color }}</p>
+            <p><strong>Дані:</strong> {{ data }}</p>
+            <p><strong>Розмір:</strong> {{ size }}×{{ size }} пікселів</p>
+            <p><strong>Колір:</strong> #{{ color }}</p>
             <p><strong>Фон:</strong> #{{ bgcolor }}</p>
         </div>
-        <a href="{{ download_url }}" class="btn btn-secondary" download="qrcode.png">⬇️ Скачать QR-код</a>
-        <a href="/" class="btn btn-back">← Создать новый</a>
+        <a href="{{ download_url }}" class="btn btn-secondary" download="qrcode.png">⬇️ Завантажити QR-код</a>
+        <a href="/" class="btn btn-back">← Створити новий</a>
     </div>
 </body>
 </html>
 '''
 
 QR_TYPES = {
-    'url': {'name': 'URL / Текст', 'icon': '🔗', 'label': 'URL или текст', 'placeholder': 'https://example.com', 'helper': 'Введите любой URL или текст'},
-    'telegram': {'name': 'Telegram', 'icon': '✈️', 'label': 'Username', 'placeholder': 'username', 'helper': 'Введите username без @'},
-    'whatsapp': {'name': 'WhatsApp', 'icon': '💬', 'label': 'Номер телефона', 'placeholder': '+79991234567', 'helper': 'С кодом страны'},
-    'instagram': {'name': 'Instagram', 'icon': '📷', 'label': 'Username', 'placeholder': 'username', 'helper': 'Введите username без @'},
-    'facebook': {'name': 'Facebook', 'icon': '👥', 'label': 'Username или ID', 'placeholder': 'username', 'helper': 'Введите username или ID'},
-    'tiktok': {'name': 'TikTok', 'icon': '🎵', 'label': 'Username', 'placeholder': 'username', 'helper': 'Введите username без @'},
-    'twitter': {'name': 'Twitter (X)', 'icon': '🐦', 'label': 'Username', 'placeholder': 'username', 'helper': 'Введите username без @'},
-    'linkedin': {'name': 'LinkedIn', 'icon': '💼', 'label': 'Username', 'placeholder': 'username', 'helper': 'LinkedIn username'},
-    'youtube': {'name': 'YouTube', 'icon': '📺', 'label': 'Канал', 'placeholder': '@channel или ID', 'helper': '@channel или ID'},
-    'email': {'name': 'Email', 'icon': '📧', 'label': 'Email адрес', 'placeholder': 'example@mail.com', 'helper': 'Email адрес'},
-    'phone': {'name': 'Телефон', 'icon': '📞', 'label': 'Номер телефона', 'placeholder': '+79991234567', 'helper': 'С кодом страны'}
+    'url':       {'name': 'URL / Текст',  'icon': '🔗', 'label': 'URL або текст',       'placeholder': 'https://example.com',  'helper': 'Введіть будь-який URL або текст'},
+    'telegram':  {'name': 'Telegram',     'icon': '✈️', 'label': 'Username',             'placeholder': 'username',             'helper': 'Введіть username без @'},
+    'whatsapp':  {'name': 'WhatsApp',     'icon': '💬', 'label': 'Номер телефону',       'placeholder': '+380991234567',        'helper': 'З кодом країни'},
+    'instagram': {'name': 'Instagram',    'icon': '📷', 'label': 'Username',             'placeholder': 'username',             'helper': 'Введіть username без @'},
+    'facebook':  {'name': 'Facebook',     'icon': '👥', 'label': 'Username або ID',      'placeholder': 'username',             'helper': 'Введіть username або ID'},
+    'tiktok':    {'name': 'TikTok',       'icon': '🎵', 'label': 'Username',             'placeholder': 'username',             'helper': 'Введіть username без @'},
+    'twitter':   {'name': 'Twitter (X)',  'icon': '🐦', 'label': 'Username',             'placeholder': 'username',             'helper': 'Введіть username без @'},
+    'linkedin':  {'name': 'LinkedIn',     'icon': '💼', 'label': 'Username',             'placeholder': 'username',             'helper': 'LinkedIn username'},
+    'youtube':   {'name': 'YouTube',      'icon': '📺', 'label': 'Канал',               'placeholder': '@channel або ID',      'helper': '@channel або ID'},
+    'email':     {'name': 'Email',        'icon': '📧', 'label': 'Email-адреса',         'placeholder': 'example@mail.com',     'helper': 'Email-адреса'},
+    'phone':     {'name': 'Телефон',      'icon': '📞', 'label': 'Номер телефону',       'placeholder': '+380991234567',        'helper': 'З кодом країни'}
 }
 
 @app.route('/')
@@ -765,108 +754,113 @@ def generate_page():
     if qr_type not in QR_TYPES:
         return redirect('/')
     config = QR_TYPES[qr_type]
-    return render_template_string(HTML_GENERATE, type=qr_type, type_name=config['name'], 
-                                 type_icon=config['icon'], input_label=config['label'],
-                                 placeholder=config['placeholder'], helper_text=config['helper'])
+    return render_template_string(
+        HTML_GENERATE,
+        type=qr_type,
+        type_name=config['name'],
+        type_icon=config['icon'],
+        input_label=config['label'],
+        placeholder=config['placeholder'],
+        helper_text=config['helper']
+    )
 
 @app.route('/view')
 def view_qr():
     data = request.args.get('data', '')
     if not data:
         return redirect('/')
-    color = request.args.get('color', '000000')
-    bgcolor = request.args.get('bgcolor', 'ffffff')
-    size = request.args.get('size', '256')
+    color     = request.args.get('color',     '000000')
+    bgcolor   = request.args.get('bgcolor',   'ffffff')
+    size      = request.args.get('size',      '256')
     quietzone = request.args.get('quietzone', '4')
-    qr_url = url_for('generate_qr', data=data, color=color, bgcolor=bgcolor, size=size, quietzone=quietzone)
+    qr_url       = url_for('generate_qr', data=data, color=color, bgcolor=bgcolor, size=size, quietzone=quietzone)
     download_url = url_for('download_qr', data=data, color=color, bgcolor=bgcolor, size=size, quietzone=quietzone)
-    return render_template_string(VIEW_TEMPLATE, qr_url=qr_url, download_url=download_url, 
-                                 data=data, color=color, bgcolor=bgcolor, size=size)
+    return render_template_string(VIEW_TEMPLATE, qr_url=qr_url, download_url=download_url,
+                                  data=data, color=color, bgcolor=bgcolor, size=size)
 
 @app.route('/qr')
 def generate_qr():
-    """Главный API эндпоинт для генерации QR"""
+    """Головний API-ендпоінт для генерації QR"""
     stats['total_requests'] += 1
-    
-    # Rate limiting
+
     if not check_rate_limit(max_requests=100, window=60):
         return jsonify({
-            'error': 'Rate limit exceeded',
-            'message': 'Максимум 100 запросов в минуту. Попробуйте через 60 секунд.'
+            'error': 'Перевищено ліміт запитів',
+            'message': 'Максимум 100 запитів на хвилину. Спробуйте через 60 секунд.'
         }), 429
-    
+
     data = request.args.get('data', '')
     if not data:
         stats['errors'] += 1
-        return jsonify({'error': 'Параметр "data" обязателен'}), 400
-    
+        return jsonify({'error': 'Параметр "data" є обов\'язковим'}), 400
+
     if len(data) > 1000:
         stats['errors'] += 1
-        return jsonify({'error': 'Данные слишком длинные (макс 1000 символов)'}), 400
-    
-    color = request.args.get('color', '000000')
-    bgcolor = request.args.get('bgcolor', 'ffffff')
-    size = parse_size(request.args.get('size', '256'))
+        return jsonify({'error': 'Дані занадто довгі (макс. 1000 символів)'}), 400
+
+    color     = request.args.get('color',     '000000')
+    bgcolor   = request.args.get('bgcolor',   'ffffff')
+    size      = parse_size(request.args.get('size', '256'))
     quietzone = int(request.args.get('quietzone', 4))
     quietzone = min(max(quietzone, 0), 10)
-    
+
     try:
         fill_color = parse_color(color)
         back_color = parse_color(bgcolor)
     except Exception as e:
         stats['errors'] += 1
-        logger.error(f"Color parsing error: {e}")
-        return jsonify({'error': 'Неверный формат цвета'}), 400
-    
+        logger.error(f"Помилка розбору кольору: {e}")
+        return jsonify({'error': 'Невірний формат кольору'}), 400
+
     try:
-        cache_info = create_qr_image.cache_info()
-        initial_hits = cache_info.hits
-        
+        cache_info    = create_qr_image.cache_info()
+        initial_hits  = cache_info.hits
+
         img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
-        
+
         cache_info = create_qr_image.cache_info()
         if cache_info.hits > initial_hits:
             stats['cache_hits'] += 1
-        
+
         ip = get_client_ip()
-        logger.info(f"QR generated - IP: {ip}, Size: {size}, Data: {len(data)} chars")
-        
+        logger.info(f"QR згенеровано — IP: {ip}, Розмір: {size}, Дані: {len(data)} симв.")
+
         return send_file(BytesIO(img_bytes), mimetype='image/png')
-        
+
     except Exception as e:
         stats['errors'] += 1
-        logger.error(f"QR generation error: {e}")
-        return jsonify({'error': 'Ошибка генерации QR-кода'}), 500
+        logger.error(f"Помилка генерації QR: {e}")
+        return jsonify({'error': 'Помилка генерації QR-коду'}), 500
 
 @app.route('/download')
 def download_qr():
-    """Эндпоинт для скачивания QR"""
+    """Ендпоінт для завантаження QR"""
     stats['total_requests'] += 1
-    
+
     if not check_rate_limit(max_requests=100, window=60):
         return jsonify({
-            'error': 'Rate limit exceeded',
-            'message': 'Максимум 100 запросов в минуту'
+            'error': 'Перевищено ліміт запитів',
+            'message': 'Максимум 100 запитів на хвилину'
         }), 429
-    
+
     data = request.args.get('data', '')
     if not data:
-        return jsonify({'error': 'Параметр "data" обязателен'}), 400
-    
+        return jsonify({'error': 'Параметр "data" є обов\'язковим'}), 400
+
     if len(data) > 1000:
-        return jsonify({'error': 'Данные слишком длинные'}), 400
-    
-    color = request.args.get('color', '000000')
-    bgcolor = request.args.get('bgcolor', 'ffffff')
-    size = parse_size(request.args.get('size', '256'))
+        return jsonify({'error': 'Дані занадто довгі'}), 400
+
+    color     = request.args.get('color',     '000000')
+    bgcolor   = request.args.get('bgcolor',   'ffffff')
+    size      = parse_size(request.args.get('size', '256'))
     quietzone = int(request.args.get('quietzone', 4))
     quietzone = min(max(quietzone, 0), 10)
-    
+
     try:
         fill_color = parse_color(color)
         back_color = parse_color(bgcolor)
-        img_bytes = create_qr_image(data, fill_color, back_color, size, quietzone)
-        
+        img_bytes  = create_qr_image(data, fill_color, back_color, size, quietzone)
+
         return send_file(
             BytesIO(img_bytes),
             mimetype='image/png',
@@ -875,43 +869,45 @@ def download_qr():
         )
     except Exception as e:
         stats['errors'] += 1
-        logger.error(f"Download error: {e}")
-        return jsonify({'error': 'Ошибка скачивания'}), 500
+        logger.error(f"Помилка завантаження: {e}")
+        return jsonify({'error': 'Помилка завантаження'}), 500
 
 @app.route('/stats')
 def show_stats():
-    """Эндпоинт статистики"""
+    """Ендпоінт статистики"""
     cache_info = create_qr_image.cache_info()
-    
+
     return jsonify({
         'total_requests': stats['total_requests'],
-        'cache_hits': stats['cache_hits'],
-        'rate_limited': stats['rate_limited'],
-        'errors': stats['errors'],
-        'active_ips': len(rate_limit_storage),
+        'cache_hits':     stats['cache_hits'],
+        'rate_limited':   stats['rate_limited'],
+        'errors':         stats['errors'],
+        'active_ips':     len(rate_limit_storage),
         'cache': {
-            'size': cache_info.currsize,
+            'size':     cache_info.currsize,
             'max_size': cache_info.maxsize,
-            'hits': cache_info.hits,
-            'misses': cache_info.misses,
-            'hit_rate': round(cache_info.hits / (cache_info.hits + cache_info.misses) * 100, 2) if (cache_info.hits + cache_info.misses) > 0 else 0
+            'hits':     cache_info.hits,
+            'misses':   cache_info.misses,
+            'hit_rate': round(
+                cache_info.hits / (cache_info.hits + cache_info.misses) * 100, 2
+            ) if (cache_info.hits + cache_info.misses) > 0 else 0
         },
         'keep_alive': {
-            'enabled': keep_alive.app_url is not None,
-            'url': keep_alive.app_url,
+            'enabled':  keep_alive.app_url is not None,
+            'url':      keep_alive.app_url,
             'interval': keep_alive.interval
         }
     })
 
 @app.route('/health')
 def health_check():
-    """Health check для мониторинга"""
+    """Health check для моніторингу"""
     return jsonify({
-        'status': 'ok',
+        'status':  'ok',
         'service': 'QR Code API',
         'version': '1.0.0'
     }), 200
 
-# Запускаем keep-alive при старте приложения (работает и с Gunicorn)
+# Запускаємо keep-alive при старті застосунку (працює і з Gunicorn)
 keep_alive.start()
-logger.info("Keep-alive система активирована")
+logger.info("Систему keep-alive активовано")
