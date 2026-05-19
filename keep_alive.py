@@ -5,78 +5,79 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class KeepAlive:
     """
-    Класс для поддержания активности сервиса на Render.com
-    Отправляет HTTP-запросы к собственному health endpoint каждые 14 минут
+    Клас для підтримки активності сервісу на Render.com
+    Надсилає HTTP-запити до власного health-ендпоінту кожні 14 хвилин
     """
-    
+
     def __init__(self, app_url=None, interval=840):
         """
         Args:
-            app_url: URL приложения (например, 'https://your-app.onrender.com')
-            interval: Интервал в секундах (по умолчанию 840 сек = 14 мин)
+            app_url: URL застосунку (наприклад, 'https://your-app.onrender.com')
+            interval: Інтервал у секундах (за замовчуванням 840 сек = 14 хв)
         """
         self.app_url = app_url
         self.interval = interval
         self.running = False
         self.thread = None
-        
+
     def _ping(self):
-        """Отправляет ping-запрос к health endpoint"""
+        """Надсилає ping-запит до health-ендпоінту"""
         if not self.app_url:
-            logger.warning("KeepAlive: app_url не задан, пропускаю ping")
+            logger.warning("KeepAlive: app_url не задано, пропускаю ping")
             return
-            
+
         try:
-            # Добавляем таймаут, чтобы не зависнуть
+            # Додаємо таймаут, щоб не зависнути
             response = requests.get(
                 f"{self.app_url}/health",
                 timeout=10,
                 headers={'User-Agent': 'KeepAlive/1.0'}
             )
-            
+
             if response.status_code == 200:
-                logger.info(f"KeepAlive: успешный ping - {self.app_url}")
+                logger.info(f"KeepAlive: успішний ping — {self.app_url}")
             else:
-                logger.warning(f"KeepAlive: ping вернул статус {response.status_code}")
-                
+                logger.warning(f"KeepAlive: ping повернув статус {response.status_code}")
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"KeepAlive: ошибка ping - {e}")
-    
+            logger.error(f"KeepAlive: помилка ping — {e}")
+
     def _run(self):
-        """Основной цикл для периодических ping-запросов"""
-        logger.info(f"KeepAlive: запущен (интервал {self.interval} сек)")
-        
+        """Основний цикл для періодичних ping-запитів"""
+        logger.info(f"KeepAlive: запущено (інтервал {self.interval} сек)")
+
         while self.running:
             time.sleep(self.interval)
-            if self.running:  # Проверяем снова после sleep
+            if self.running:  # Перевіряємо знову після sleep
                 self._ping()
-    
+
     def start(self):
-        """Запускает фоновый поток для keep-alive"""
+        """Запускає фоновий потік для keep-alive"""
         if self.running:
-            logger.warning("KeepAlive: уже запущен")
+            logger.warning("KeepAlive: вже запущено")
             return
-        
+
         if not self.app_url:
-            logger.info("KeepAlive: app_url не задан, keep-alive отключен")
+            logger.info("KeepAlive: app_url не задано, keep-alive вимкнено")
             return
-        
+
         self.running = True
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
-        logger.info("KeepAlive: поток запущен")
-    
+        logger.info("KeepAlive: потік запущено")
+
     def stop(self):
-        """Останавливает keep-alive"""
+        """Зупиняє keep-alive"""
         if not self.running:
             return
-        
-        logger.info("KeepAlive: остановка...")
+
+        logger.info("KeepAlive: зупинка...")
         self.running = False
-        
+
         if self.thread:
             self.thread.join(timeout=5)
-        
-        logger.info("KeepAlive: остановлен")
+
+        logger.info("KeepAlive: зупинено")
